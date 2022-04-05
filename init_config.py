@@ -17,7 +17,7 @@ def init_coke_net_config(args, logger, print_config = True):
     config["intermediate_size"] = args.intermediate_size
     config["activation_dropout"] = args.activation_dropout
     config["soft_label"] = args.soft_label
-    config["gpus"] = args.gpus
+    # config["gpus"] = args.gpus
     config["use_cuda"] = args.use_cuda
     if print_config is True:
         logger.info('----------- CoKE Network Configuration -------------')

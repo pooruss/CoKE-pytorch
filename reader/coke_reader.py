@@ -318,9 +318,15 @@ class CoKEModel(nn.Module):
         # self._build_model(src_ids, position_ids, input_mask)
 
     def forward(self, src_ids, position_ids, input_mask, mask_pos):
-        batch_size = src_ids.size(0)
-        attn_mask = torch.stack(tensors=[input_mask] * self._n_head, dim=1).reshape(
-            shape=[batch_size * self._n_head, self._max_seq_len, self._max_seq_len])
+        # mask 1
+        # batch_size = src_ids.size(0)
+        # attn_mask = torch.stack(tensors=[input_mask] * self._n_head, dim=1).reshape(
+        #     shape=[batch_size * self._n_head, self._max_seq_len, self._max_seq_len])
+        # mask 2
+        self_attn_mask = torch.bmm(input_mask.squeeze(dim=1), input_mask.squeeze(dim=1).permute(0, 2, 1))
+        attn_mask = torch.stack(tensors=[self_attn_mask] * self._n_head, dim=1)
+        attn_mask = attn_mask.squeeze().reshape(shape=[self.batch_size * self._n_head, -1, self._max_seq_len])
+
         word_emb_out = self.word_embedding(src_ids.squeeze())
         position_emb_out = self.posititon_embedding(position_ids.squeeze())
         emb_out = word_emb_out + position_emb_out
@@ -429,7 +435,7 @@ if __name__ == '__main__':
     config = init_coke_net_config(args)
 
     model = CoKEModel(config=config)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=0.00001)
     lr_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer=optimizer)
 
     train_dataset = KBCDataReader(vocab_path='../data/FB15K/vocab.txt',
@@ -457,7 +463,11 @@ if __name__ == '__main__':
         # output = F.softmax(output)
         # print(mask_label.squeeze().shape)     # [64]
         # print(output)     # [64, 16396]
-        loss = F.cross_entropy(input=output, target=mask_label.squeeze())
+        print(src_id[0])
+        print(mask_pos[0])
+        print(mask_label.squeeze())
+        loss = F.cross_entropy(input=output, target=mask_label, label_smoothing=0.8)
+
         print('### {} data ###'.format(str(idx)))
         print (loss.data)
         optimizer.zero_grad()

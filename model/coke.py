@@ -35,7 +35,7 @@ class CoKE(nn.Module):
                         d_model=self._emb_size,
                         nhead=self._n_head,
                         dim_feedforward=self._intermediate_size,
-                        layer_norm_eps=1e-12,
+                        layer_norm_eps=1e-5,
                         dropout=self._attention_dropout,
                         activation=self._hidden_activation),
                     num_layers=self._n_layer)
@@ -45,12 +45,12 @@ class CoKE(nn.Module):
         self.classification_head = nn.ModuleList([
             nn.Linear(in_features=self._emb_size, out_features=self._emb_size),
             nn.GELU(),
-            nn.LayerNorm(self._emb_size, eps=1e-12),
+            nn.LayerNorm(self._emb_size, eps=1e-5),
             nn.Linear(in_features=self._emb_size, out_features=self._voc_size)
         ])
 
         self.sub_layers = nn.ModuleDict({
-            'layer_norm':nn.LayerNorm(self._emb_size, eps=1e-12),
+            'layer_norm':nn.LayerNorm(self._emb_size, eps=1e-5),
             'dropout':nn.Dropout(p=self._dropout)
         })
 
@@ -67,15 +67,20 @@ class CoKE(nn.Module):
         emb_out = self.sub_layers["dropout"](emb_out)
         emb_out = emb_out.permute(1, 0, 2)  # -> seq_len x B x E
 
-        batch_size = src_ids.size(0)
 
+        batch_size = src_ids.size(0)
         # attn_mask = nn.Transformer.generate_square_subsequent_mask(self._max_seq_len).cuda()
         # attn_mask = attn_mask.expand(size=[batch_size, 3, 3])
         # attn_mask = attn_mask + input_mask.squeeze() * -10000
         # attn_mask = torch.cat((attn_mask, attn_mask, attn_mask, attn_mask), dim=0)
 
-        attn_mask = torch.stack(tensors=[input_mask]*self._n_head, dim=1).reshape(
-            shape=[batch_size * self._n_head, self._max_seq_len, self._max_seq_len])
+        # attn_mask = torch.stack(tensors=[input_mask]*self._n_head, dim=1).reshape(
+        #     shape=[batch_size * self._n_head, self._max_seq_len, self._max_seq_len])
+
+        with torch.no_grad():
+            self_attn_mask = torch.bmm(input_mask.squeeze(dim=1), input_mask.squeeze(dim=1).permute(0, 2, 1))
+            attn_mask = torch.stack(tensors=[self_attn_mask] * self._n_head, dim=1)
+            attn_mask = attn_mask.squeeze().reshape(shape=[batch_size*self._n_head, -1, self._max_seq_len])
 
         enc_out = self.transformer_block["transformer_encoder"](emb_out, mask=attn_mask.squeeze())
         enc_out = enc_out.reshape(shape=[-1, self._emb_size])
@@ -94,8 +99,8 @@ class CoKE(nn.Module):
             if isinstance(m, nn.Linear):
                 nn.init.normal_(m.weight, 0, self._initializer_range)
                 nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Embedding):
-                nn.init.normal_(m.weight, 0, self._initializer_range)
+            # elif isinstance(m, nn.Embedding):
+            #     nn.init.normal_(m.weight, 0, self._initializer_range)
             # elif isinstance(m, nn.LayerNorm):
             #     nn.init.constant_(m.weight, 1.0)
             #     nn.init.constant_(m.bias, 0.0)

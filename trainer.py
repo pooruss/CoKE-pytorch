@@ -19,7 +19,7 @@ class Trainer():
         self.learning_rate = train_config["learning_rate"]
         self.skip_steps = train_config["skip_steps"]
         self.save_path = train_config["save_path"]
-        self.log_file = open('./train2.log', 'w', encoding='utf-8')
+        self.log_file = open('./train1.log', 'w', encoding='utf-8')
         self.loss_function = None
         self.optimizer = None
         self.lr_scheduler = None
@@ -50,9 +50,8 @@ class Trainer():
     def validation(self):
         self.model.eval()
         acc, loss_sum = 0.0, 0.0
-
         step_per_epoch = len(self.val_data_loader)
-        print("----------- Evaluation -----------")
+        print("----------- validation -----------")
         self.log_file.write(str(len(self.val_data_loader))+'\n')
         for iter, batch_data in enumerate(self.val_data_loader):
             # fetch batch data
@@ -64,29 +63,34 @@ class Trainer():
             if self.use_cuda:
                 src_id, pos_id, input_mask, mask_pos, mask_label = \
                     src_id.cuda(), pos_id.cuda(), input_mask.cuda(), mask_pos.cuda(), mask_label.cuda()
-            input_x = [src_id, pos_id, input_mask, mask_pos]
+            input_x = {
+                'src_ids': src_id,
+                'position_ids': pos_id,
+                'input_mask': input_mask,
+                'mask_pos': mask_pos,
+                'mask_label': mask_label
+            }
             # forward
             y_hat = self.model(input_x)
             # loss
-            loss = self.loss_function(
+            loss = F.cross_entropy(
                 input=y_hat,
-                target=mask_label.squeeze()
+                target=mask_label.squeeze(),
+                label_smoothing=0.8
             )
             acc += y_hat.max(dim=1)[1].eq(mask_label.squeeze()).sum().data
             loss_sum += loss.data
-            total_acc = acc * 100 / len(self.val_data_loader.dataset)
-            total_loss = loss_sum / len(self.val_data_loader)
-            if iter % self.skip_steps == 0:
-                print('Step:{}/{}, loss:{}, acc:{}.'.format(
-                    str(iter),
-                    str(step_per_epoch),
-                    str(total_loss.cpu().detach().numpy()), str(total_acc.cpu().detach().numpy())))
-                self.log_file.write(('Step:{}/{}, loss:{}, acc:{}.'.format(
-                    str(iter),
-                    str(step_per_epoch),
-                    str(total_loss.cpu().detach().numpy()), str(total_acc.cpu().detach().numpy()))) + '\n')
+
+        acc = acc * 100 / len(self.val_data_loader.dataset)
+        loss_sum = loss_sum / len(self.val_data_loader)
+
+        print('loss:{}, acc:{}.'.format(
+            str(loss_sum.cpu().detach().numpy()), str(acc.cpu().detach().numpy())))
+        self.log_file.write(('loss:{}, acc:{}.'.format(
+            str(loss_sum.cpu().detach().numpy()), str(acc.cpu().detach().numpy()))) + '\n')
 
     def train(self):
+        self.model.train()
         acc, loss_sum = 0.0, 0.0
         step_per_epoch = len(self.train_data_loader)
         total_train_step = step_per_epoch * self.epoch
@@ -115,12 +119,13 @@ class Trainer():
                 loss = F.cross_entropy(
                             input=logits,
                             target=mask_label.squeeze(),
-                            label_smoothing=0.1
+                            label_smoothing=0.8
                         )
                 # backward
+                print(loss)
                 if self.do_train:
                     self.optimizer.zero_grad()
-                    loss.mean().backward()
+                    loss.backward()
                     self.optimizer.step()
 
                 # log
@@ -155,6 +160,8 @@ class Trainer():
                             self.model_name, self.learning_rate,
                             self.batch_size, str(current_step)))
 
+            self.validation()
+            self.model.train()
             self.lr_scheduler.step()
 
         return acc, loss_sum

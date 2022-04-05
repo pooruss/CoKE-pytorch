@@ -29,20 +29,31 @@ def main():
                  epoch=args.epoch,
                  vocab_size=args.vocab_size)
 
-    validation_split = 0.2
-    dataset_size = len(train_dataset)
-    indices = list(range(dataset_size))
-    split = int(np.floor(validation_split * dataset_size))
-    shuffle_dataset = True
-    if shuffle_dataset:
-        np.random.shuffle(indices)
+    val_dataset = KBCDataReader(vocab_path='./data/FB15K/vocab.txt',
+                 data_path='./data/FB15K/valid.coke.txt',
+                 max_seq_len=args.max_seq_len,
+                 batch_size=args.batch_size,
+                 is_training=False,
+                 shuffle=False,
+                 dev_count=1,
+                 epoch=args.epoch,
+                 vocab_size=args.vocab_size)
 
-    train_indices, val_indices = indices[split:], indices[:split]
-    train_sampler = SubsetRandomSampler(train_indices)
-    validation_sampler = SubsetRandomSampler(val_indices)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler)
-    val_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, sampler=validation_sampler)
-
+    # validation_split = 0.2
+    # dataset_size = len(train_dataset)
+    # indices = list(range(dataset_size))
+    # split = int(np.floor(validation_split * dataset_size))
+    # shuffle_dataset = True
+    # if shuffle_dataset:
+    #     np.random.shuffle(indices)
+    #
+    # train_indices, val_indices = indices[split:], indices[:split]
+    # train_sampler = SubsetRandomSampler(train_indices)
+    # validation_sampler = SubsetRandomSampler(val_indices)
+    # train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler)
+    # val_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, sampler=validation_sampler)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size)
 
     # ------------
     # model
@@ -52,7 +63,7 @@ def main():
     model = CoKE(config=coke_config)
     model._init_parameters()
     if torch.cuda.device_count() >= 1:
-        model = nn.DataParallel(model, device_ids=[0,1,2,3])
+        model = nn.DataParallel(model, device_ids=[0,1,2,6])
     model.to(device=device)
 
     # ------------
@@ -60,7 +71,10 @@ def main():
     # ------------
     train_config = init_train_config(args, logger, print_config=True)
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+    optimizer = optim.Adam(model.module.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+    # for name, parms in model.named_parameters():
+    #     print('-->name:', name, '-->grad_requirs:', parms.requires_grad, '--weight', torch.mean(parms.data))
+
     # warm_up_with_cosine_lr
     t = args.warm_up_epochs  # warmup
     T = args.epoch
@@ -68,10 +82,8 @@ def main():
     lambda1 = lambda epoch: (0.9 * epoch / t + 0.1) if epoch < t else 0.1 if n_t * (
                 1 + math.cos(math.pi * (epoch - t) / (T - t))) < 0.1 else n_t * (
                 1 + math.cos(math.pi * (epoch - t) / (T - t)))
-    # warm_up_with_cosine_lr = lambda epoch: epoch / args.warm_up_epochs if epoch <= args.warm_up_epochs else 0.5 * (
-    #             math.cos((epoch - args.warm_up_epochs) / (args.epoch - args.warm_up_epochs) * math.pi) + 1)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda1)
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=args.warmup_proportion * args.epoch, gamma=0.1)
+
     coke_trainer = Trainer(model, train_config)
     coke_trainer.load_train_data_loader(train_loader)
     coke_trainer.load_val_data_loader(val_loader)

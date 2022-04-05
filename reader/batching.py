@@ -76,19 +76,27 @@ def pad_batch_data(insts,
 
         return_list += [inst_pos.astype("int64").reshape([-1, max_len, 1])]
 
+    # if return_input_mask:
+    #     # This is used to avoid attention on paddings.
+    #     input_mask_data_1 = np.array([[1] * len(inst) + [0] *
+    #                                 (max_len - len(inst)) for inst in insts])
+    #     input_mask_data_1 = np.expand_dims(input_mask_data_1, axis=-1)
+    #     # print(input_mask_data_1.shape)
+    #     input_mask_data_2 = np.array([([1] if inst[0] == mask_id else [0]) + [0] + ([1] if inst[2] == mask_id else [0])
+    #                                  for inst in insts])
+    #     input_mask_data_2 = np.expand_dims(input_mask_data_2, axis=1)
+    #     # print(input_mask_data_2.shape)
+    #     input_mask_data = np.array([np.matmul(input1,input2) for input1,input2 in zip(input_mask_data_1,input_mask_data_2)])
+    #     # print(input_mask_data.shape)
+    #
+    #     return_list += [input_mask_data.astype("float32")]
+
+    # origin
     if return_input_mask:
         # This is used to avoid attention on paddings.
-        input_mask_data_1 = np.array([[1] * len(inst) + [0] *
+        input_mask_data = np.array([[1] * len(inst) + [0] *
                                     (max_len - len(inst)) for inst in insts])
-        input_mask_data_1 = np.expand_dims(input_mask_data_1, axis=-1)
-        # print(input_mask_data_1.shape)
-        input_mask_data_2 = np.array([([1] if inst[0] == mask_id else [0]) + [0] + ([1] if inst[2] == mask_id else [0])
-                                     for inst in insts])
-        input_mask_data_2 = np.expand_dims(input_mask_data_2, axis=1)
-        # print(input_mask_data_2.shape)
-        input_mask_data = np.array([np.matmul(input1,input2) for input1,input2 in zip(input_mask_data_1,input_mask_data_2)])
-        # print(input_mask_data.shape)
-
+        input_mask_data = np.expand_dims(input_mask_data, axis=-1)
         return_list += [input_mask_data.astype("float32")]
 
     return return_list if len(return_list) > 1 else return_list[0]
